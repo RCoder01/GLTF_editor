@@ -1,3 +1,5 @@
 .vscode/*
 *.gltf
 *.txt
+*.bin
+*.pyc
