@@ -13,6 +13,8 @@ from itertools import chain
 import typing
 from typing import TYPE_CHECKING
 
+# from union_find import UnionFind #type: ignore
+
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparisonT
 
@@ -110,6 +112,34 @@ def component_min(
 ) -> list[SupportsRichComparisonT]:
     return [min(vec[axis] for vec in vec2d) for axis in range(len(vec2d[0]))]
 
+
+class UnionFind:
+    def __init__(self, num_items: int = 0) -> None:
+        self.items = list(range(num_items))
+
+    def union(self, a: int, b: int) -> None:
+        self.items[self.find(b)] = self.find(a)
+
+    def find(self, a: int) -> int:
+        if self.items[a] == a:
+            return a
+        self.items[a] = self.find(self.items[a])
+        return self.items[a]
+
+    def find_fast(self, a: int) -> int:
+        while self.items[a] != a:
+            a = self.items[a]
+        return a
+
+    def groups(self) -> list[list[int]]:
+        groups: dict[int, list[int]] = {}
+        for i in self.items:
+            group = self.find_fast(i)
+            groups[group] = groups.get(group, []) + [i]
+        return list(groups.values())
+
+    def add(self, parent: int | None = None) -> None:
+        self.items.append(parent or len(self.items))
 
 class Gltf:
     def __init__(self, fpath: Path) -> None:
@@ -455,19 +485,38 @@ class Gltf:
         def get_points(triangle: Collection[int]) -> list[position]:
             return [positions[i] for i in triangle]
 
-        components: list[Component] = []
-        for i, triangle in enumerate(indices):
-            points = set(get_points(triangle))
-            components.append(Component(points, [i]))
-            connected_components = [
-                component for component in components if component.points & points
-            ]
-            for component in connected_components[1:]:
-                connected_components[0].points.update(component.points)
-                connected_components[0].tri_indices.extend(component.tri_indices)
-                components.remove(component)
+        # return find_with_sets(indices, get_points)
+        return find_with_union(indices, get_points)
 
-        return components
+
+
+def find_with_sets(indices, get_points):
+    components: list[Component] = []
+    for i, triangle in enumerate(indices):
+        points = set(get_points(triangle))
+        components.append(Component(points, [i]))
+        connected_components = [
+            component for component in components if component.points & points
+        ]
+        for component in connected_components[1:]:
+            connected_components[0].points.update(component.points)
+            connected_components[0].tri_indices.extend(component.tri_indices)
+            components.remove(component)
+
+    return components
+
+def find_with_union(indices, get_points):
+    point_map = {}
+    tri_set = UnionFind()
+    for i, triangle in enumerate(indices):
+        tri_set.add()
+        for point in get_points(triangle):
+            if point in point_map:
+                tri_set.union(point_map[point], i)
+            else:
+                point_map[point] = i
+
+    return [Component(set(), group) for group in tri_set.groups()]
 
 
 def main():
@@ -490,16 +539,18 @@ def main():
 def process(gltf: Gltf) -> None:
     gltf.node_mesh_reference = True
     gltf.accessor_data = True
-    gltf.expand_multiprimitive_meshes()
-    print(len(gltf._find_connected_components(0)))
-    gltf.split_disconnected_mesh(186)
+    # gltf.expand_multiprimitive_meshes()
+    # print(len(gltf._find_connected_components(0)))
+    # gltf.split_disconnected_mesh(186)
     gltf.split_disconnected_mesh(458)
 
 
 if __name__ == "__main__":
     import cProfile
 
+    largest = 0
     profile = cProfile.run("main()", sort="tottime")
+    print(largest)
     # main()
     # # with open("temp.gltf", mode="r") as f1, open(r"D:\Documents - Hard Drive\CADAssistant\2910, 2023 Top Level Robot.gltf", mode='r') as f2:
     # with open("temp.gltf", mode="r") as f1, open(r"temp2.gltf", mode="r") as f2:
