@@ -1,27 +1,22 @@
 from __future__ import annotations
 
-from enum import Enum
 import struct
 import tkinter
 from tkinter import filedialog
-from typing import Any, Sequence, Collection, Iterator, Generator, Iterable
+from typing import Any, Collection, Iterator, Iterable
 import json
 import os
 import sys
 from pathlib import Path
-from itertools import chain
 import typing
 from typing import TYPE_CHECKING
 
-from union_find import UnionFind #type: ignore
+from tqdm import tqdm
+from lib_helpers import UnionFind, component_max, component_min  # type: ignore
 
+from gltf_types import GltfJson, T, normal, position, edge
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparisonT
-
-
-T = typing.TypeVar("T")
-normal = position = tuple[float, float, float]
-edge = tuple[position, position]
 
 
 class Component(typing.NamedTuple):
@@ -86,12 +81,8 @@ def align(n: int, alignment: int) -> int:
     return ((n + alignment - 1) // alignment) * alignment
 
 
-def groupby(iterator: Iterator[T], n: int) -> Generator[list[T], None, None]:
-    try:
-        while True:
-            yield [next(iterator) for _ in range(n)]
-    except StopIteration:
-        pass
+def groupby(iterator: Iterator[T], n: int) -> Iterator[tuple[T]]:
+    return zip(*([iterator] * n))
 
 
 def pack_all(
@@ -101,23 +92,23 @@ def pack_all(
         struct.pack_into(buffer, i * struct.size, *datum)
 
 
-def component_max(
-    vec2d: Sequence[Sequence[SupportsRichComparisonT]],
-) -> list[SupportsRichComparisonT]:
-    return [max(vec[axis] for vec in vec2d) for axis in range(len(vec2d[0]))]
+# def component_max(
+#     vec2d: Sequence[Sequence[SupportsRichComparisonT]],
+# ) -> list[SupportsRichComparisonT]:
+#     return [max(vec[axis] for vec in vec2d) for axis in range(len(vec2d[0]))]
 
 
-def component_min(
-    vec2d: Sequence[Sequence[SupportsRichComparisonT]],
-) -> list[SupportsRichComparisonT]:
-    return [min(vec[axis] for vec in vec2d) for axis in range(len(vec2d[0]))]
+# def component_min(
+#     vec2d: Sequence[Sequence[SupportsRichComparisonT]],
+# ) -> list[SupportsRichComparisonT]:
+#     return [min(vec[axis] for vec in vec2d) for axis in range(len(vec2d[0]))]
 
 
 class Gltf:
     def __init__(self, fpath: Path) -> None:
         self.inpath = fpath
         with open(self.inpath, mode="r", encoding="UTF-8") as f:
-            self.json = json.load(f)
+            self.json: GltfJson = json.load(f)
 
         self._node_mesh_reference = False
         self._accessor_data = False
@@ -151,8 +142,8 @@ class Gltf:
             self._set_node_mesh_indices()
 
     def _set_node_mesh_references(self):
-        nodes: list[dict[str, Any]] = self.json["nodes"]
-        meshes: list[dict[str, Any]] = self.json["meshes"]
+        nodes = self.json["nodes"]
+        meshes = self.json["meshes"]
         for node in nodes:
             for i in range(len(node.get("children", []))):
                 node["children"][i] = nodes[node["children"][i]]
@@ -160,11 +151,11 @@ class Gltf:
                 node["mesh"] = meshes[node["mesh"]]
 
     def _set_node_mesh_indices(self):
-        nodes: list[dict[str, Any]] = self.json["nodes"]
-        meshes: list[dict[str, Any]] = self.json["meshes"]
+        nodes = self.json["nodes"]
+        meshes = self.json["meshes"]
         mesh_ids = {id(mesh): i for i, mesh in enumerate(meshes)}
         node_ids = {id(node): i for i, node in enumerate(nodes)}
-        # accessors: list[dict[str, Any]] = self.json["accessors"]
+        # accessors = self.json["accessors"]
         for node in nodes:
             if "mesh" in node:
                 node["mesh"] = mesh_ids[id(node["mesh"])]
@@ -332,14 +323,17 @@ class Gltf:
     def split_disconnected_meshes(self):
         self.expand_multiprimitive_meshes()
 
-        for mesh_index in range(len(self.json["meshes"])):
+        for mesh_index in tqdm(range(len(self.json["meshes"]))):
             self.split_disconnected_mesh(mesh_index)
 
-    def split_disconnected_mesh(self, mesh_index: int):
+    def split_disconnected_mesh(self, mesh_index: int) -> list[dict[str, Any]]:
         mesh = self.json["meshes"][mesh_index]
+        submeshes = []
         if len(mesh["primitives"]) > 1:
             for added in self.expand_multiprimitive_mesh(mesh_index):
-                self.split_disconnected_mesh(find(added, self.json["meshes"]))
+                submeshes += self.split_disconnected_mesh(
+                    find(added, self.json["meshes"])
+                )
 
         components = self._find_connected_components(mesh_index)
 
@@ -377,7 +371,7 @@ class Gltf:
             new_primitive["attributes"] = {}
 
             component_indices_map: dict[int, int] = {}
-            component_indices_list: list[int] = []
+            component_indices_list: list[tuple[int]] = []
             component_attribute_values: dict[str, list[tuple[int | float, ...]]] = {
                 attribute: [] for attribute in primitive["attributes"]
             }
@@ -390,7 +384,7 @@ class Gltf:
                             component_attribute_values[attribute].append(
                                 attribute_values[attribute][index]
                             )
-                    component_indices_list.append(component_indices_map[index])
+                    component_indices_list.append((component_indices_map[index],))
 
             new_indices_accessor = indices_accessor.copy()
             new_indices_accessor["count"] = len(component_indices_list)
@@ -401,7 +395,7 @@ class Gltf:
             pack_all(
                 indices_struct,
                 new_indices_accessor["data"],
-                ((index,) for index in component_indices_list),
+                component_indices_list,
             )
             new_primitive["indices"] = new_indices_accessor
             self.json["accessors"].append(new_indices_accessor)
@@ -432,7 +426,8 @@ class Gltf:
         # self.json["accessors"].remove(indices_accessor)
         # for accessor in attribute_accessors.values():
         #     self.json["accessors"].remove(accessor)
-        self.expand_multiprimitive_mesh(mesh_index)
+        submeshes += self.expand_multiprimitive_mesh(mesh_index)
+        return submeshes
 
     def _find_connected_components(
         self, mesh_index: int, primitive_index: int = 0
@@ -448,9 +443,9 @@ class Gltf:
         positions = typing.cast(
             list[position], list(self.get_accessor_data_index(position_accessor_index))
         )
-        indices = map(
-            lambda x: typing.cast(int, x[0]),
-            self.get_accessor_data_index(index_accessor_index),
+        indices = (
+            typing.cast(int, x[0])
+            for x in self.get_accessor_data_index(index_accessor_index)
         )
         if primitive["mode"] == 4:
             indices = groupby(indices, 3)
@@ -518,6 +513,7 @@ def process(gltf: Gltf) -> None:
     # print(len(gltf._find_connected_components(0)))
     # gltf.split_disconnected_mesh(186)
     gltf.split_disconnected_mesh(458)
+    # gltf.split_disconnected_meshes()
 
 
 if __name__ == "__main__":

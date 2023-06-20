@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use pyo3::{prelude::*, exceptions::PyIndexError, types::{PyString, PyList}};
+use pyo3::{prelude::*, exceptions::PyIndexError, types::{PyString, PyList, PyIterator}, pyclass::IterNextOutput};
 
 /// UnionFind.
 #[pyclass]
@@ -56,11 +56,11 @@ impl UnionFind {
         self.0.push(parent.unwrap_or(self.0.len()))
     }
 
-    fn __str__<'a>(&self, py: Python<'a>) -> &'a PyString {
+    fn __str__<'py>(&self, py: Python<'py>) -> &'py PyString {
         PyString::new(py, &format!("{:?}", self.0))
     }
 
-    fn groups<'a>(&self, py: Python<'a>) -> PyResult<&'a PyList> {
+    fn groups<'py>(&self, py: Python<'py>) -> PyResult<&'py PyList> {
         let mut groups: HashMap<_, Vec<usize>> = HashMap::new();
         for i in 0..self.0.len() {
             groups.entry(self.find_fast(i)?).or_default().push(i);
@@ -71,8 +71,50 @@ impl UnionFind {
 
 /// Rust thing
 #[pymodule]
-fn union_find(_py: Python, m: &PyModule) -> PyResult<()> {
+fn lib_helpers(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<UnionFind>()?;
+    m.add_function(wrap_pyfunction!(component_max, m)?)?;
+    m.add_function(wrap_pyfunction!(component_min, m)?)?;
     // m.add("__doc__", "editor rust").expect("Test");
     Ok(())
+}
+
+#[pyfunction]
+fn component_max<'py>(py: Python<'py>, iter: &'py PyAny) -> PyResult<&'py PyList> {
+    let mut maxes: Vec<&PyAny> = Vec::new();
+    let mut iter = iter.iter()?;
+    while let Some(any) = iter.next() {
+        let collection = any?.downcast::<PyAny>()?.iter()?;
+        for (i, item) in collection.enumerate() {
+            let item = item?;
+            if let Some(&max) = maxes.get(i) {
+                if item.gt(max)? {
+                    maxes[i] = item;
+                }
+            } else {
+                maxes.push(item);
+            }
+        }
+    }
+    Ok(PyList::new(py, maxes))
+}
+
+#[pyfunction]
+fn component_min<'py>(py: Python<'py>, iter: &'py PyAny) -> PyResult<&'py PyList> {
+    let mut mins: Vec<&PyAny> = Vec::new();
+    let mut iter = iter.iter()?;
+    while let Some(any) = iter.next() {
+        let collection = any?.downcast::<PyAny>()?.iter()?;
+        for (i, item) in collection.enumerate() {
+            let item = item?;
+            if let Some(&min) = mins.get(i) {
+                if item.lt(min)? {
+                    mins[i] = item;
+                }
+            } else {
+                mins.push(item);
+            }
+        }
+    }
+    Ok(PyList::new(py, mins))
 }
