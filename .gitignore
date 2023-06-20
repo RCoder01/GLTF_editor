@@ -3,3 +3,4 @@
 *.txt
 *.bin
 *.pyc
+target/

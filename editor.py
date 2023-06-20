@@ -13,7 +13,7 @@ from itertools import chain
 import typing
 from typing import TYPE_CHECKING
 
-# from union_find import UnionFind #type: ignore
+from union_find import UnionFind #type: ignore
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparisonT
@@ -112,34 +112,6 @@ def component_min(
 ) -> list[SupportsRichComparisonT]:
     return [min(vec[axis] for vec in vec2d) for axis in range(len(vec2d[0]))]
 
-
-class UnionFind:
-    def __init__(self, num_items: int = 0) -> None:
-        self.items = list(range(num_items))
-
-    def union(self, a: int, b: int) -> None:
-        self.items[self.find(b)] = self.find(a)
-
-    def find(self, a: int) -> int:
-        if self.items[a] == a:
-            return a
-        self.items[a] = self.find(self.items[a])
-        return self.items[a]
-
-    def find_fast(self, a: int) -> int:
-        while self.items[a] != a:
-            a = self.items[a]
-        return a
-
-    def groups(self) -> list[list[int]]:
-        groups: dict[int, list[int]] = {}
-        for i in self.items:
-            group = self.find_fast(i)
-            groups[group] = groups.get(group, []) + [i]
-        return list(groups.values())
-
-    def add(self, parent: int | None = None) -> None:
-        self.items.append(parent or len(self.items))
 
 class Gltf:
     def __init__(self, fpath: Path) -> None:
@@ -489,7 +461,6 @@ class Gltf:
         return find_with_union(indices, get_points)
 
 
-
 def find_with_sets(indices, get_points):
     components: list[Component] = []
     for i, triangle in enumerate(indices):
@@ -504,6 +475,7 @@ def find_with_sets(indices, get_points):
             components.remove(component)
 
     return components
+
 
 def find_with_union(indices, get_points):
     point_map = {}
