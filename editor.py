@@ -162,14 +162,16 @@ class Gltf:
     def _set_node_mesh_indices(self):
         nodes: list[dict[str, Any]] = self.json["nodes"]
         meshes: list[dict[str, Any]] = self.json["meshes"]
+        mesh_ids = {id(mesh): i for i, mesh in enumerate(meshes)}
+        node_ids = {id(node): i for i, node in enumerate(nodes)}
         # accessors: list[dict[str, Any]] = self.json["accessors"]
         for node in nodes:
             if "mesh" in node:
-                node["mesh"] = find(node["mesh"], meshes)
+                node["mesh"] = mesh_ids[id(node["mesh"])]
                 assert node["mesh"] != -1
             if "children" in node:
                 for i in range(len(node["children"])):
-                    node["children"][i] = find(node["children"][i], nodes)
+                    node["children"][i] = node_ids[id(node["children"][i])]
                     assert node["children"][i] != -1
 
     @property
@@ -263,16 +265,17 @@ class Gltf:
                     primitive["indices"] = self.json["accessors"][primitive["indices"]]
 
     def _remove_accessor_reference(self):
+        accessor_ids = {
+            id(accessor): i for i, accessor in enumerate(self.json["accessors"])
+        }
         for mesh in self.json["meshes"]:
             for primitive in mesh["primitives"]:
                 for attribute in primitive["attributes"]:
-                    primitive["attributes"][attribute] = find(
-                        primitive["attributes"][attribute], self.json["accessors"]
-                    )
+                    primitive["attributes"][attribute] = accessor_ids[
+                        id(primitive["attributes"][attribute])
+                    ]
                 if "indices" in primitive:
-                    primitive["indices"] = find(
-                        primitive["indices"], self.json["accessors"]
-                    )
+                    primitive["indices"] = accessor_ids[id(primitive["indices"])]
 
     def accessor_struct(self, accessor: dict[str, Any]) -> struct.Struct:
         multiplier = ACCESSOR_TYPE_MULTIPLIER[accessor["type"]]
@@ -520,9 +523,7 @@ def process(gltf: Gltf) -> None:
 if __name__ == "__main__":
     import cProfile
 
-    largest = 0
     profile = cProfile.run("main()", sort="tottime")
-    print(largest)
     # main()
     # # with open("temp.gltf", mode="r") as f1, open(r"D:\Documents - Hard Drive\CADAssistant\2910, 2023 Top Level Robot.gltf", mode='r') as f2:
     # with open("temp.gltf", mode="r") as f1, open(r"temp2.gltf", mode="r") as f2:
