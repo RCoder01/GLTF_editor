@@ -311,9 +311,9 @@ class Gltf:
             if node.get("mesh", None) is not mesh or len(mesh) <= 1:
                 continue
             children = []
-            for i, mesh in enumerate([node["mesh"]] + added):
+            for i, submesh in enumerate([node["mesh"]] + added):
                 self.json["nodes"].append(
-                    {"mesh": mesh, "name": f'{node["name"]} ({i})'}
+                    {"mesh": submesh, "name": f'{node["name"]} ({i})'}
                 )
                 children.append(self.json["nodes"][-1])
             del node["mesh"]
@@ -512,8 +512,8 @@ def process(gltf: Gltf) -> None:
     # gltf.expand_multiprimitive_meshes()
     # print(len(gltf._find_connected_components(0)))
     # gltf.split_disconnected_mesh(186)
-    gltf.split_disconnected_mesh(458)
-    # gltf.split_disconnected_meshes()
+    # gltf.split_disconnected_mesh(458)
+    gltf.split_disconnected_meshes()
 
 
 if __name__ == "__main__":
